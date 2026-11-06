@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 250px; margin: 0; padding: 14px 16px; font: 13px "Noto Sans KR", "Malgun Gothic", sans-serif; color: #1f1f1f; }
+  h1 { font-size: 14px; margin: 0 0 12px; }
+  label { display: flex; align-items: center; justify-content: space-between; margin: 10px 0; gap: 8px; }
+  input[type=range] { width: 110px; }
+  .hint { color: #777; font-size: 11px; line-height: 1.5; margin-top: 12px; }
+</style>
+</head>
+<body>
+  <h1>🎤 유튜브 노래방</h1>
+  <label>사용하기 <input type="checkbox" id="enabled"></label>
+  <label>한글 발음 표시 <input type="checkbox" id="showPron"></label>
+  <label>한국어 번역 표시 <input type="checkbox" id="showTrans"></label>
+  <label>번역 자막이면 원문 가사 찾기 <input type="checkbox" id="lyricsMode"></label>
+  <label>원문 가사도 함께 표시 <input type="checkbox" id="showOrig"></label>
+  <label>글자 크기 <input type="range" id="scale" min="0.5" max="1.5" step="0.05"></label>
+  <label>발음 글자색 <input type="color" id="color"></label>
+  <div class="hint">유튜브에서 자막(CC)을 켜면 자막 아래에 발음이 나옵니다. 일본어·중국어·영어 등을 지원합니다. 자막이 한국어 번역뿐이면 원문 가사를 자동으로 찾아 발음을 보여 줍니다.</div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+.ykpron-overlay {
+  position: absolute;
+  z-index: 45;
+  display: none;
+  transform: translateX(-50%);
+  width: max-content;
+  padding: 0.12em 0.45em 0.18em;
+  border-radius: 0.2em;
+  background: rgba(8, 8, 8, 0.72);
+  font-family: "YouTube Noto", Roboto, "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  line-height: 1.35;
+  text-align: center;
+  white-space: pre-wrap;
+  word-break: keep-all;
+  pointer-events: none;
+  user-select: none;
+}
+.ykpron-overlay .ykpron-pron {
+  color: var(--ykpron-color, #ffe066);
+  font-weight: 500;
+}
+.ykpron-overlay .ykpron-trans {
+  color: #e6e6e6;
+  font-size: 0.85em;
+}
+.ykpron-overlay .ykpron-orig {
+  color: #cfcfcf;
+  font-size: 0.75em;
+}
