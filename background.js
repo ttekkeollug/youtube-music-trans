@@ -95,7 +95,7 @@ async function convert(text) {
 }
 
 // ── 번역 자막 영상용: 원문 가사 찾아 줄마다 발음·번역 준비 ──
-const LYR_VER = 'v2';
+const LYR_VER = 'v3';
 const lyricsJobs = new Map();
 
 async function mapLimit(items, limit, fn) {
@@ -165,7 +165,7 @@ async function buildLyrics({ videoId, title, channel, duration }) {
     return { t: l.t, text: l.text, pron: c.pron || '', ko: c.translation || '' };
   });
   if (!lines.some((l) => l.ko)) return null; // 번역 실패 시 저장하지 않고 다음에 재시도
-  const pkg = { id: best.id, track: best.trackName, artist: best.artistName, lines, at: Date.now() };
+  const pkg = { id: best.id, track: best.trackName, artist: best.artistName, duration: Number(best.duration) || 0, synced: !!best.syncedLyrics, lines, at: Date.now() };
   await chrome.storage.local.set({ [key]: pkg });
   return pkg;
 }

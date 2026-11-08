@@ -3,23 +3,34 @@
 <head>
 <meta charset="utf-8">
 <style>
-  body { width: 250px; margin: 0; padding: 14px 16px; font: 13px "Noto Sans KR", "Malgun Gothic", sans-serif; color: #1f1f1f; }
-  h1 { font-size: 14px; margin: 0 0 12px; }
-  label { display: flex; align-items: center; justify-content: space-between; margin: 10px 0; gap: 8px; }
+  body { width: 270px; margin: 0; padding: 14px 16px; font: 13px "Noto Sans KR", "Malgun Gothic", sans-serif; color: #1f1f1f; }
+  h1 { font-size: 14px; margin: 0 0 10px; }
+  h2 { font-size: 11px; color: #888; font-weight: 600; margin: 14px 0 2px; }
+  label { display: flex; align-items: center; justify-content: space-between; margin: 8px 0; gap: 8px; }
   input[type=range] { width: 110px; }
-  .hint { color: #777; font-size: 11px; line-height: 1.5; margin-top: 12px; }
+  .hint { color: #777; font-size: 11px; line-height: 1.55; margin-top: 12px; }
+  kbd { font: 11px monospace; background: #eee; border-radius: 3px; padding: 0 3px; }
 </style>
 </head>
 <body>
   <h1>🎤 유튜브 노래방</h1>
   <label>사용하기 <input type="checkbox" id="enabled"></label>
   <label>한글 발음 표시 <input type="checkbox" id="showPron"></label>
-  <label>한국어 번역 표시 <input type="checkbox" id="showTrans"></label>
-  <label>번역 자막이면 원문 가사 찾기 <input type="checkbox" id="lyricsMode"></label>
   <label>원문 가사도 함께 표시 <input type="checkbox" id="showOrig"></label>
+  <label>한국어 번역 표시 <input type="checkbox" id="showTrans"></label>
+
+  <h2>자막이 켜져 있을 때</h2>
+  <label>번역 자막이면 원문 가사 찾기 <input type="checkbox" id="lyricsMode"></label>
+  <label>가사가 없으면 원어 자막 발음 표시 <input type="checkbox" id="origFallback"></label>
+
+  <h2>자막이 없거나 꺼져 있을 때</h2>
+  <label>자막 없는 영상 모드 (가사) <input type="checkbox" id="noCapMode"></label>
+  <label>가사가 없으면 자동 자막으로 표시 <input type="checkbox" id="noCapAsr"></label>
+
+  <h2>모양</h2>
   <label>글자 크기 <input type="range" id="scale" min="0.5" max="1.5" step="0.05"></label>
   <label>발음 글자색 <input type="color" id="color"></label>
-  <div class="hint">유튜브에서 자막(CC)을 켜면 자막 아래에 발음이 나옵니다. 일본어·중국어·영어 등을 지원합니다. 자막이 한국어 번역뿐이면 원문 가사를 자동으로 찾아 발음을 보여 줍니다.</div>
+  <div class="hint">자막 없는 영상 모드에서 가사가 어긋나면 <kbd>Alt</kbd>+<kbd>,</kbd> (가사 늦게) / <kbd>Alt</kbd>+<kbd>.</kbd> (가사 빠르게) / <kbd>Alt</kbd>+<kbd>/</kbd> (초기화)로 0.5초씩 맞출 수 있습니다. 영상마다 저장됩니다.</div>
   <script src="popup.js"></script>
 </body>
 </html>

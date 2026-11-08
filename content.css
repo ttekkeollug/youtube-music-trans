@@ -27,3 +27,17 @@
   color: #cfcfcf;
   font-size: 0.75em;
 }
+.ykpron-toast {
+  position: absolute;
+  z-index: 60;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(20, 20, 20, 0.85);
+  color: #fff;
+  font: 13px "Noto Sans KR", "Malgun Gothic", sans-serif;
+  pointer-events: none;
+}
