@@ -338,6 +338,13 @@
       if (a.status === 'running') return null;
       const i = vs.info;
       const durOk = pkg.duration && i && i.duration && Math.abs(pkg.duration - i.duration) <= 25;
+      if (!pkg.manual && !a.confident) {
+        // 실제로 부르는 언어가 한국어(한국어 자동 자막)인데 가사가 외국어면 다른 노래(또는 번안곡)
+        const asr = i && (i.tracks || []).find((t) => t.kind === 'asr');
+        if (asr && langScript(asr.lang) === 'ko' && pkg.lang && pkg.lang !== 'ko') return null;
+        // 번역한 제목으로 찾은 가사(근거 약함)는 곡 길이까지 맞아야 사용
+        if (pkg.weak && !durOk) return null;
+      }
       // 음악 영상이거나 직접 고른 가사면 싱크 확인이 안 돼도 표시(싱크는 Alt+, / Alt+. 로 조정)
       const music = i && i.category === 'Music';
       if (!a.confident && !durOk && !pkg.manual && !music) return null;
@@ -356,10 +363,10 @@
     return 'latin';
   }
 
-  const langScript = (lang) => {
+  function langScript(lang) {
     const b = String(lang || '').split('-')[0].toLowerCase();
     return b === 'ja' ? 'ja' : b === 'zh' ? 'zh' : b === 'ko' ? 'ko' : 'latin';
-  };
+  }
 
   /**
    * 화면의 자막이 실제로 부르는(말하는) 언어가 아니라 번역이면, 원어 트랙을 돌려준다.

@@ -105,7 +105,7 @@ async function convert(text, hint = '') {
 }
 
 // ── 번역 자막 영상용: 원문 가사 찾아 줄마다 발음·번역 준비 ──
-const LYR_VER = 'v5';
+const LYR_VER = 'v6';
 const lyricsJobs = new Map();
 
 async function mapLimit(items, limit, fn) {
@@ -143,7 +143,10 @@ async function buildLyrics({ videoId, title, channel, duration }) {
   };
   await tryQueries(info.queries);
   // 제목에 원어 곡명이 없으면 한국어 조각을 일본어로 번역해 다시 찾는다 (사신 → 死神)
+  // 번역으로 찾은 가사는 다른 노래일 수 있어 '근거 약함'으로 표시 → 화면 쪽에서 확인된 뒤에만 사용
+  let weak = false;
   if (!best && info.korean.length) {
+    weak = true;
     const translated = [];
     for (const k of info.korean) {
       try {
@@ -166,6 +169,7 @@ async function buildLyrics({ videoId, title, channel, duration }) {
   }
   const pkg = await buildPkg(best);
   if (!pkg) return null; // 번역 실패 시 저장하지 않고 다음에 재시도
+  if (weak) pkg.weak = true;
   await chrome.storage.local.set({ [key]: pkg });
   return pkg;
 }
