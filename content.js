@@ -338,13 +338,9 @@
       if (a.status === 'running') return null;
       const i = vs.info;
       const durOk = pkg.duration && i && i.duration && Math.abs(pkg.duration - i.duration) <= 25;
-      if (!pkg.manual && !a.confident) {
-        // 실제로 부르는 언어가 한국어(한국어 자동 자막)인데 가사가 외국어면 다른 노래(또는 번안곡)
-        const asr = i && (i.tracks || []).find((t) => t.kind === 'asr');
-        if (asr && langScript(asr.lang) === 'ko' && pkg.lang && pkg.lang !== 'ko') return null;
-        // 번역한 제목으로 찾은 가사(근거 약함)는 곡 길이까지 맞아야 사용
-        if (pkg.weak && !durOk) return null;
-      }
+      if (sungInKoreanButForeignLyrics(pkg)) return null;
+      // 번역한 제목으로 찾은 가사(근거 약함)는 곡 길이까지 맞아야 사용
+      if (!pkg.manual && !a.confident && pkg.weak && !durOk) return null;
       // 음악 영상이거나 직접 고른 가사면 싱크 확인이 안 돼도 표시(싱크는 Alt+, / Alt+. 로 조정)
       const music = i && i.category === 'Music';
       if (!a.confident && !durOk && !pkg.manual && !music) return null;
@@ -361,6 +357,14 @@
     if (/[\u3400-\u9fff]/.test(text)) return 'zh';
     if (RE_HANGUL.test(text)) return 'ko';
     return 'latin';
+  }
+
+  /** 실제로 부르는 언어가 한국어(한국어 자동 자막)인데 가사가 외국어면 번안곡이거나 다른 노래 */
+  function sungInKoreanButForeignLyrics(pkg) {
+    if (!pkg || pkg.manual || !pkg.lang || pkg.lang === 'ko') return false;
+    const i = vs.info;
+    const asr = i && i.videoId === vs.vid && (i.tracks || []).find((t) => t.kind === 'asr');
+    return !!(asr && langScript(asr.lang) === 'ko');
   }
 
   function langScript(lang) {
@@ -391,6 +395,7 @@
     const now = video ? video.currentTime : undefined;
     if (settings.lyricsMode && RE_HANGUL.test(text)) {
       const st = ensureLyrics(p);
+      if (st.status === 'ready' && sungInKoreanButForeignLyrics(st.pkg)) return null; // 한국어로 부른 영상: 자막이 곧 가사
       if (st.status === 'ready') {
         if (st.lastText !== text) {
           st.lastText = text;
