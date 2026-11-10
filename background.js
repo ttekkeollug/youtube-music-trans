@@ -1,6 +1,6 @@
 // 서비스 워커: 언어 판별·로마자 표기(구글 번역) + 한글 발음 변환
 import { pronounce, detectScript } from './lib/convert.js';
-import { analyzeTitle, parseLrc, pickBest, searchLrclib } from './lib/lyrics.js';
+import { analyzeTitle, parseLrc, pickBest, searchLrclib, koSimilarity } from './lib/lyrics.js';
 
 let dictPromise = null;
 function loadDict() {
@@ -105,7 +105,7 @@ async function convert(text, hint = '') {
 }
 
 // ── 번역 자막 영상용: 원문 가사 찾아 줄마다 발음·번역 준비 ──
-const LYR_VER = 'v6';
+const LYR_VER = 'v7';
 const lyricsJobs = new Map();
 
 async function mapLimit(items, limit, fn) {
@@ -162,6 +162,33 @@ async function buildLyrics({ videoId, title, channel, duration }) {
       qs.push(t);
     }
     await tryQueries([...new Set(qs)].slice(0, 6));
+  }
+  // 그래도 없고 가수 이름만 원어로 있으면: 그 가수의 곡 목록을 가져와 곡명을 한국어로 번역해
+  // 영상 제목의 한국어 곡명과 가장 비슷한 곡을 고른다 (恋風に乗せて ↔ 사랑 감기에 실려)
+  if (!best && info.korean.length) {
+    const artists = info.terms.filter((t) => t.length >= 2).slice(0, 2);
+    const pool = new Map();
+    for (const a of artists) {
+      try {
+        for (const r of await searchLrclib(a)) if ((r.syncedLyrics || r.plainLyrics) && !r.instrumental) pool.set(r.id, r);
+        searched++;
+      } catch (e) { /* 무시 */ }
+    }
+    const names = [...new Set([...pool.values()].map((r) => String(r.trackName || '').split(/\s[-–]\s|[(（]/)[0].trim()).filter(Boolean))].slice(0, 25);
+    let bestName = null, bestSim = 0;
+    await mapLimit(names, 4, async (n) => {
+      let ko = '';
+      try { ko = await translateTo(n, 'ko'); } catch (e) { return; }
+      for (const k of info.korean) {
+        const sim = koSimilarity(ko, k);
+        if (sim > bestSim) { bestSim = sim; bestName = n; }
+      }
+    });
+    if (bestName && bestSim >= 0.4) {
+      const same = [...pool.values()].filter((r) => String(r.trackName || '').startsWith(bestName));
+      best = pickBest(same, { title: title + ' ' + bestName, duration, terms: [...terms, bestName] });
+      if (best) weak = true;
+    }
   }
   if (!best) {
     if (searched) await chrome.storage.local.set({ [key]: { none: true, at: Date.now() } }); // 네트워크 오류면 저장 안 함
