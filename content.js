@@ -736,7 +736,10 @@
   function maybeHint(p) {
     if (hintShownFor === vs.vid || vs.lyr.status !== 'none') return;
     const i = vs.info;
-    if (!i || i.videoId !== vs.vid || i.category !== 'Music') return;
+    if (!i || i.videoId !== vs.vid) return;
+    // 음악 분류이거나 제목이 커버·라이브 영상처럼 보이면 안내
+    const songish = i.category === 'Music' || /cover|커버|歌ってみた|노래방|live|라이브|불러/i.test(i.title || '');
+    if (!songish) return;
     hintShownFor = vs.vid;
     showToast(p, "가사를 자동으로 찾지 못했어요. 플레이어 오른쪽 아래 '가' 버튼으로 노래 제목을 검색해 보세요.", 4000);
   }
