@@ -18,7 +18,7 @@
   const baseUrls = new Map();   // videoId → 플레이어가 쓴 자막 URL
   let overlay = null, toast = null, toastTimer = 0;
   let player = null, container = null, observer = null;
-  let lift = 0, rafId = 0, lastRender = '', shownText = '', debounceTimer = 0, lastShownAt = 0, lastCaptionAt = 0;
+  let rafId = 0, lastRender = '', shownText = '', debounceTimer = 0, lastCaptionAt = 0;
   let alive = true;
   let lastReq = { vid: '', title: '' };
   let vs = newVideoState('');
@@ -311,8 +311,8 @@
       if (a.status === 'running') return null;
       const i = vs.info;
       const durOk = pkg.duration && i && i.duration && Math.abs(pkg.duration - i.duration) <= 25;
-      if (!a.confident && !durOk) return null;
-      off = a.offset;
+      if (!a.confident && !durOk && !pkg.manual) return null; // 사용자가 직접 고른 가사는 그대로 표시
+      off = a.confident ? a.offset : 0;
     }
     loadManualOffset();
     const idx = T.lineAtTime(pkg.lines, now, off + vs.manualOffset);
@@ -382,28 +382,17 @@
     return overlay;
   }
 
-  function setLift(px) {
-    px = Math.round(px);
-    if (px === lift) return;
-    lift = px;
-    if (container) container.style.translate = px ? `0 ${-px}px` : '';
-  }
-
-  // mode: 'hard' 완전 해제 / 'gap' 자막 없음(2.5초 지나면 높이 해제) / 'keep' 자막은 있는데 보여 줄 발음이 없음(높이 유지)
-  // → 줄이 바뀌거나 매칭 안 되는 줄이 나와도 유튜브 자막이 위아래로 튀지 않는다
-  function hide(mode = 'hard') {
+  function hide() {
     if (overlay) overlay.style.display = 'none';
-    if (mode === 'hard' || (mode === 'gap' && Date.now() - lastShownAt > 2500)) setLift(0);
     shownText = '';
     lastRender = '';
   }
 
-  // 유튜브는 시작·광고 전환 때 자막 컨테이너를 새로 만든다 → 매 프레임 실제 자막이 들어 있는 컨테이너를 쓴다
+  // 유튜브는 시작·광고 전환 때 자막 컨테이너를 새로 만든다 → 매 프레임 실제 자막이 들어 있는 컨테이너를 관찰
   function attach(p, host) {
     const next = host || (p ? p.querySelector('.ytp-caption-window-container') : null);
     if (p === player && next === container) return;
-    if (container) container.style.translate = '';
-    if (next && lift) next.style.translate = `0 ${-lift}px`;
+    if (container) container.style.translate = ''; // 이전 버전이 남긴 이동 값 정리
     player = p;
     container = next;
     if (observer) observer.disconnect();
@@ -432,7 +421,6 @@
       el.style.maxWidth = Math.round(pr.width * 0.92) + 'px';
     }
     el.style.display = 'block';
-    lastShownAt = Date.now();
     return { el, pr };
   }
 
@@ -442,37 +430,40 @@
     return controlsVisible && bar ? bar.offsetHeight + 8 : 6;
   }
 
-  // 자막 바로 아래에 배치. 화면 밖으로 나가면 자막 전체를 위로 올린다.
-  function showUnderCaption(p, lines, cap) {
+  // 유튜브 자막은 기본 위치 그대로 두고(절대 움직이지 않음), 발음 줄은
+  //  · 자막 아래에 공간이 있으면 자막 바로 아래
+  //  · 없으면(기본 위치는 화면 맨 아래라 보통 공간이 없음) 자막 바로 위
+  //  · 자막이 화면 위쪽에 배치된 영상이면 기본 위치(화면 아래쪽 가운데)
+  function showWithCaption(p, lines, cap) {
     const size = Math.max(10, cap.fontSize * (Number(settings.scale) || 0.85));
     const { el, pr } = paint(p, lines, size);
     const gap = Math.round(size * 0.25);
     const h = el.offsetHeight;
-    const baseBottom = cap.rect.bottom + lift - pr.top; // 들어올리기 전 자막 아래 위치
+    const capTop = cap.rect.top - pr.top;
+    const capBottom = cap.rect.bottom - pr.top;
+    if ((capTop + capBottom) / 2 < pr.height * 0.5) return placeDefault(p, el, pr);
     const limit = pr.height - bottomReserve(p);
-    let need = Math.max(0, Math.min(baseBottom + gap + h - limit, baseBottom - h));
-    // 표시 중에는 올리기만 한다(두 줄↔한 줄 자막 전환 때 흔들리지 않게)
-    if (lift && el.dataset.shownAt && Date.now() - Number(el.dataset.shownAt) < 2500) need = Math.max(need, lift);
-    el.dataset.shownAt = String(Date.now());
-    setLift(need);
+    const top = capBottom + gap + h <= limit ? capBottom + gap : capTop - gap - h;
     const center = (cap.rect.left + cap.rect.right) / 2 - pr.left;
     const half = el.offsetWidth / 2;
-    el.style.top = Math.round(baseBottom - lift + gap) + 'px';
+    el.style.top = Math.round(Math.max(4, top)) + 'px';
     el.style.left = Math.round(Math.min(Math.max(center, half + 4), pr.width - half - 4)) + 'px';
   }
 
-  // 자막 없는 모드: 유튜브 자막 자리(화면 아래쪽 가운데)에 표시
+  function placeDefault(p, el, pr) {
+    el.style.top = Math.round(pr.height - bottomReserve(p) - el.offsetHeight - Math.round(pr.height * 0.03)) + 'px';
+    el.style.left = Math.round(pr.width / 2) + 'px';
+  }
+
+  // 자막 없는 모드: 유튜브 자막의 기본 위치(화면 아래쪽 가운데)에 표시
   function showAtBottom(p, lines) {
     const pr0 = p.getBoundingClientRect();
     const size = Math.max(12, (pr0.height / 20) * ((Number(settings.scale) || 0.85) / 0.85));
     const { el, pr } = paint(p, lines, size);
-    setLift(0);
-    const h = el.offsetHeight;
-    el.style.top = Math.round(pr.height - bottomReserve(p) - h - Math.round(pr.height * 0.03)) + 'px';
-    el.style.left = Math.round(pr.width / 2) + 'px';
+    placeDefault(p, el, pr);
   }
 
-  function showToast(p, msg) {
+  function showToast(p, msg, ms = 1600) {
     if (!toast || toast.parentNode !== p) {
       if (toast) toast.remove();
       toast = document.createElement('div');
@@ -482,7 +473,173 @@
     toast.textContent = msg;
     toast.style.display = 'block';
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 1600);
+    toastTimer = setTimeout(() => { toast.style.display = 'none'; }, ms);
+  }
+
+
+  // ── 가사 직접 찾기: 플레이어 컨트롤의 '가' 버튼 → 노래 제목 검색 → 결과 선택 ──
+  let panel = null;
+  let hintShownFor = '';
+
+  function send(msg) {
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage(msg, (res) => resolve(chrome.runtime.lastError ? null : res));
+      } catch (e) {
+        alive = false;
+        resolve(null);
+      }
+    });
+  }
+
+  function ensureButton(p) {
+    const right = p.querySelector('.ytp-right-controls');
+    if (!right || right.querySelector('.ykpron-btn')) return;
+    const b = document.createElement('button');
+    b.className = 'ytp-button ykpron-btn';
+    b.title = '가사 찾기 (유튜브 노래방)';
+    b.setAttribute('aria-label', '가사 찾기');
+    b.textContent = '가';
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePanel(p);
+    });
+    right.insertBefore(b, right.firstChild);
+  }
+
+  function statusText() {
+    const l = vs.lyr;
+    if (l.status === 'ready') return `가사: ${l.pkg.track} – ${l.pkg.artist}${l.pkg.synced ? '' : ' (타임스탬프 없음)'}${l.pkg.manual ? ' · 직접 선택' : ''}`;
+    if (l.status === 'loading') return '가사를 찾는 중…';
+    if (l.status === 'none') return '이 영상의 가사를 자동으로 찾지 못했습니다.';
+    return '아직 가사를 찾지 않았습니다.';
+  }
+
+  function fmtDur(sec) {
+    if (!sec) return '';
+    return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+  }
+
+  function buildPanel(p) {
+    const el = document.createElement('div');
+    el.className = 'ykpron-panel';
+    const status = document.createElement('div');
+    status.className = 'ykpron-panel-status';
+    const form = document.createElement('form');
+    form.className = 'ykpron-panel-form';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = '노래 제목 (원어 제목이 잘 찾아집니다)';
+    const go = document.createElement('button');
+    go.type = 'submit';
+    go.textContent = '검색';
+    form.append(input, go);
+    const list = document.createElement('div');
+    list.className = 'ykpron-panel-list';
+    const foot = document.createElement('div');
+    foot.className = 'ykpron-panel-foot';
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.textContent = '이 영상 가사 끄기';
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = '닫기';
+    const hint = document.createElement('span');
+    hint.textContent = '싱크: Alt+, / Alt+.';
+    foot.append(hint, clear, close);
+    el.append(status, form, list, foot);
+
+    // 패널 안의 키 입력·클릭이 유튜브 단축키나 재생/일시정지로 넘어가지 않게
+    for (const t of ['keydown', 'keyup', 'keypress']) el.addEventListener(t, (e) => e.stopPropagation());
+    for (const t of ['click', 'mousedown', 'mouseup', 'dblclick', 'wheel']) el.addEventListener(t, (e) => e.stopPropagation());
+
+    const runSearch = async (query) => {
+      list.textContent = '검색 중…';
+      const meta = videoMeta(p);
+      const res = await send({ type: 'search', query, title: meta.title, channel: meta.channel });
+      if (!res) { list.textContent = '검색하지 못했습니다. 잠시 후 다시 시도해 주세요.'; return; }
+      if (!query && res.query) input.value = res.query;
+      list.textContent = '';
+      if (!res.results.length) { list.textContent = '결과가 없습니다. 원어 제목이나 가수 이름으로 검색해 보세요.'; return; }
+      for (const r of res.results) {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'ykpron-panel-item';
+        const name = document.createElement('b');
+        name.textContent = r.track;
+        const sub = document.createElement('span');
+        sub.textContent = ` ${r.artist}${r.duration ? ' · ' + fmtDur(r.duration) : ''}${r.synced ? ' · 싱크' : ' · 싱크 없음'}`;
+        item.append(name, sub);
+        item.addEventListener('click', () => choose(r, item));
+        list.appendChild(item);
+      }
+    };
+
+    const choose = async (r, item) => {
+      const mine = vs;
+      item.disabled = true;
+      status.textContent = `"${r.track}" 가사를 준비하는 중… (줄마다 발음 변환)`;
+      const res = await send({ type: 'setLyrics', videoId: mine.vid, id: r.id });
+      item.disabled = false;
+      if (mine !== vs) return;
+      if (!res || !res.pkg) { status.textContent = '가사를 불러오지 못했습니다.'; return; }
+      applyPkg(res.pkg);
+      status.textContent = statusText();
+      showToast(p, `가사 적용: ${res.pkg.track} – ${res.pkg.artist}`);
+    };
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      runSearch(input.value.trim());
+    });
+    clear.addEventListener('click', async () => {
+      const mine = vs;
+      await send({ type: 'clearLyrics', videoId: mine.vid });
+      if (mine !== vs) return;
+      mine.lyr = { status: 'none', pkg: null, matcher: null, lastText: '', lastMatch: null, retryAt: 0 };
+      status.textContent = '이 영상에서는 가사를 쓰지 않습니다. 다시 쓰려면 검색해서 고르세요.';
+      schedule();
+    });
+    close.addEventListener('click', () => { el.style.display = 'none'; });
+    el._refresh = () => { status.textContent = statusText(); };
+    el._search = runSearch;
+    el._vid = '';
+    return el;
+  }
+
+  function togglePanel(p) {
+    if (!panel || panel.parentNode !== p) {
+      if (panel) panel.remove();
+      panel = buildPanel(p);
+      p.appendChild(panel);
+    }
+    const open = panel.style.display !== 'block';
+    panel.style.display = open ? 'block' : 'none';
+    if (open) {
+      panel._refresh();
+      if (panel._vid !== vs.vid) {
+        panel._vid = vs.vid;
+        panel.querySelector('input').value = '';
+        panel._search(''); // 영상 제목으로 먼저 검색해 후보를 보여 준다
+      }
+      setTimeout(() => { try { panel.querySelector('input').focus(); } catch (e) { /* 무시 */ } }, 0);
+    }
+  }
+
+  function applyPkg(pkg) {
+    vs.lyr = { status: 'ready', pkg, matcher: globalThis.YKMatch.createMatcher(pkg.lines), lastText: '', lastMatch: null, retryAt: 0 };
+    vs.align = { status: 'idle', offset: 0, confident: false };
+    lastRender = '';
+    schedule();
+  }
+
+  // 음악 영상인데 가사를 못 찾았으면 한 번만 안내
+  function maybeHint(p) {
+    if (hintShownFor === vs.vid || vs.lyr.status !== 'none') return;
+    const i = vs.info;
+    if (!i || i.videoId !== vs.vid || i.category !== 'Music') return;
+    hintShownFor = vs.vid;
+    showToast(p, "가사를 자동으로 찾지 못했어요. 플레이어 오른쪽 아래 '가' 버튼으로 노래 제목을 검색해 보세요.", 4000);
   }
 
   // ── 메인 루프 ──
@@ -496,8 +653,15 @@
     const p = findPlayer();
     if (!settings.enabled || !p) { attach(p, null); return hide(); }
     const vid = currentVideoId();
-    if (vid !== vs.vid) vs = newVideoState(vid);
-    if (vid) refreshInfo();
+    if (vid !== vs.vid) {
+      vs = newVideoState(vid);
+      if (panel) panel.style.display = 'none';
+    }
+    if (vid) {
+      refreshInfo();
+      ensureButton(p);
+      if (panel && panel.style.display === 'block') panel._refresh();
+    }
     // 광고 중에는 광고 자막을 무시
     if (p.classList.contains('ad-showing') || p.classList.contains('ad-interrupting')) { attach(p, null); return hide(); }
 
@@ -505,10 +669,9 @@
     attach(p, cap.host);
     if (cap.text && cap.rect) {
       lastCaptionAt = Date.now();
-      if (lift) lastShownAt = Date.now(); // 자막이 떠 있는 동안은 높이 유지
       const lines = captionLines(p, cap.text);
-      if (lines && lines.length) return showUnderCaption(p, lines, cap);
-      return hide('keep');
+      if (lines && lines.length) return showWithCaption(p, lines, cap);
+      return hide();
     }
     // 자막 버튼이 켜져 있고 최근에 자막이 있었으면 줄 사이 빈틈 → 자막 없는 모드로 넘어가지 않는다.
     // 버튼을 끄면 바로 자막 없는 모드로.
@@ -517,9 +680,10 @@
     const inGap = ccOn && Date.now() - lastCaptionAt < (ccBtn ? 15000 : 5000);
     if (settings.noCapMode && vid && !inGap) {
       const lines = noCaptionLines(p);
+      maybeHint(p);
       if (lines && lines.length) return showAtBottom(p, lines);
     }
-    return hide('gap');
+    return hide();
   }
 
   // 자막 없는 모드 싱크 수동 조정: Alt+, (가사 늦게) / Alt+. (가사 빠르게) / Alt+/ (초기화)

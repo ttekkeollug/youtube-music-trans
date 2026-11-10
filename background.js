@@ -114,7 +114,7 @@ async function mapLimit(items, limit, fn) {
 async function buildLyrics({ videoId, title, channel, duration }) {
   const key = `lyr:${LYR_VER}:${videoId}`;
   const stored = (await chrome.storage.local.get(key))[key];
-  if (stored && (stored.lines || Date.now() - stored.at < 6 * 3600 * 1000)) return stored.lines ? stored : null;
+  if (stored && (stored.lines || stored.manual || Date.now() - stored.at < 6 * 3600 * 1000)) return stored.lines ? stored : null;
 
   const info = analyzeTitle(title, channel);
   const seen = new Map();
@@ -154,9 +154,18 @@ async function buildLyrics({ videoId, title, channel, duration }) {
     if (searched) await chrome.storage.local.set({ [key]: { none: true, at: Date.now() } }); // 네트워크 오류면 저장 안 함
     return null;
   }
-  let raw = best.syncedLyrics ? parseLrc(best.syncedLyrics) : [];
-  if (!raw.length) raw = String(best.plainLyrics || '').split('\n').map((t) => ({ t: null, text: t.trim() })).filter((l) => l.text);
+  const pkg = await buildPkg(best);
+  if (!pkg) return null; // 번역 실패 시 저장하지 않고 다음에 재시도
+  await chrome.storage.local.set({ [key]: pkg });
+  return pkg;
+}
+
+/** LRCLIB 기록 하나 → 줄마다 발음·번역을 붙인 가사 패키지 */
+async function buildPkg(rec, { manual = false } = {}) {
+  let raw = rec.syncedLyrics ? parseLrc(rec.syncedLyrics) : [];
+  if (!raw.length) raw = String(rec.plainLyrics || '').split('\n').map((t) => ({ t: null, text: t.trim() })).filter((l) => l.text);
   raw = raw.slice(0, 150);
+  if (!raw.length) return null;
   const uniq = [...new Set(raw.map((l) => l.text))];
   const conv = new Map();
   await mapLimit(uniq, 4, async (text) => conv.set(text, await convert(text)));
@@ -164,10 +173,41 @@ async function buildLyrics({ videoId, title, channel, duration }) {
     const c = conv.get(l.text) || {};
     return { t: l.t, text: l.text, pron: c.pron || '', ko: c.translation || '' };
   });
-  if (!lines.some((l) => l.ko)) return null; // 번역 실패 시 저장하지 않고 다음에 재시도
-  const pkg = { id: best.id, track: best.trackName, artist: best.artistName, duration: Number(best.duration) || 0, synced: !!best.syncedLyrics, lines, at: Date.now() };
-  await chrome.storage.local.set({ [key]: pkg });
+  if (!manual && !lines.some((l) => l.ko)) return null;
+  return {
+    id: rec.id, track: rec.trackName, artist: rec.artistName, duration: Number(rec.duration) || 0,
+    synced: !!rec.syncedLyrics, manual, lines, at: Date.now(),
+  };
+}
+
+// ── 사용자가 직접 노래를 검색해 가사를 고르는 기능 ──
+async function searchSongs({ query, title, channel }) {
+  const queries = query ? [query] : analyzeTitle(title, channel).queries.slice(0, 3);
+  const seen = new Map();
+  for (const q of queries) {
+    try {
+      for (const r of await searchLrclib(q)) if (!seen.has(r.id) && (r.syncedLyrics || r.plainLyrics) && !r.instrumental) seen.set(r.id, r);
+    } catch (e) { /* 다음 검색어 */ }
+    if (seen.size >= 8) break;
+  }
+  const results = [...seen.values()]
+    .sort((a, b) => (b.syncedLyrics ? 1 : 0) - (a.syncedLyrics ? 1 : 0))
+    .slice(0, 12)
+    .map((r) => ({ id: r.id, track: r.trackName, artist: r.artistName, album: r.albumName || '', duration: Math.round(Number(r.duration) || 0), synced: !!r.syncedLyrics }));
+  return { query: queries[0] || '', results };
+}
+
+async function setLyrics({ videoId, id }) {
+  const res = await fetch('https://lrclib.net/api/get/' + encodeURIComponent(id), { headers: { 'Lrclib-Client': 'yt-kpron/2.1.0' } });
+  if (!res.ok) throw new Error('lrclib ' + res.status);
+  const pkg = await buildPkg(await res.json(), { manual: true });
+  if (!pkg) return null;
+  await chrome.storage.local.set({ [`lyr:${LYR_VER}:${videoId}`]: pkg });
   return pkg;
+}
+
+async function clearLyrics({ videoId }) {
+  await chrome.storage.local.set({ [`lyr:${LYR_VER}:${videoId}`]: { none: true, manual: true, at: Date.now() } });
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -178,6 +218,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       lyricsJobs.set(msg.videoId, job);
     }
     job.then((pkg) => sendResponse({ pkg }), () => sendResponse({ pkg: null }));
+    return true;
+  }
+  if (msg && msg.type === 'search') {
+    searchSongs(msg).then(sendResponse, () => sendResponse({ query: msg.query || '', results: [], error: true }));
+    return true;
+  }
+  if (msg && msg.type === 'setLyrics' && msg.videoId && msg.id) {
+    setLyrics(msg).then((pkg) => sendResponse({ pkg }), () => sendResponse({ pkg: null, error: true }));
+    return true;
+  }
+  if (msg && msg.type === 'clearLyrics' && msg.videoId) {
+    clearLyrics(msg).then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
     return true;
   }
   if (msg && msg.type === 'convert' && typeof msg.text === 'string') {

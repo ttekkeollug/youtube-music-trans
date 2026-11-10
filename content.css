@@ -41,3 +41,42 @@
   font: 13px "Noto Sans KR", "Malgun Gothic", sans-serif;
   pointer-events: none;
 }
+.ykpron-btn {
+  font: 600 15px "Noto Sans KR", "Malgun Gothic", sans-serif !important;
+  color: #fff;
+  text-align: center;
+  opacity: 0.9;
+}
+.ykpron-btn:hover { opacity: 1; color: #ffe066; }
+.ykpron-panel {
+  position: absolute;
+  z-index: 70;
+  right: 12px;
+  bottom: 60px;
+  width: min(360px, calc(100% - 24px));
+  max-height: calc(100% - 80px);
+  overflow: auto;
+  display: none;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(24, 24, 24, 0.95);
+  color: #eee;
+  font: 13px/1.5 "Noto Sans KR", "Malgun Gothic", sans-serif;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+.ykpron-panel-status { color: #ffe066; margin-bottom: 8px; }
+.ykpron-panel-form { display: flex; gap: 6px; margin-bottom: 8px; }
+.ykpron-panel-form input {
+  flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #555; border-radius: 6px;
+  background: #111; color: #fff; font: inherit;
+}
+.ykpron-panel button {
+  padding: 5px 10px; border: 0; border-radius: 6px; background: #3a3a3a; color: #fff;
+  font: inherit; cursor: pointer;
+}
+.ykpron-panel button:hover { background: #4a4a4a; }
+.ykpron-panel-list { display: flex; flex-direction: column; gap: 4px; }
+.ykpron-panel .ykpron-panel-item { text-align: left; background: #242424; padding: 6px 8px; }
+.ykpron-panel .ykpron-panel-item span { color: #aaa; font-size: 12px; }
+.ykpron-panel-foot { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.ykpron-panel-foot span { flex: 1; color: #888; font-size: 11px; }
