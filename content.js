@@ -18,7 +18,7 @@
   const baseUrls = new Map();   // videoId → 플레이어가 쓴 자막 URL
   let overlay = null, toast = null, toastTimer = 0;
   let player = null, container = null, observer = null;
-  let rafId = 0, lastRender = '', shownText = '', debounceTimer = 0, lastCaptionAt = 0;
+  let rafId = 0, rafAt = 0, lastRender = '', shownText = '', debounceTimer = 0, lastCaptionAt = 0;
   let alive = true;
   let lastReq = { vid: '', title: '' };
   let vs = newVideoState('');
@@ -670,7 +670,6 @@
   }
 
   // ── 메인 루프 ──
-  let rafAt = 0;
   function schedule() {
     if (!rafId) { rafAt = Date.now(); rafId = requestAnimationFrame(update); }
   }
