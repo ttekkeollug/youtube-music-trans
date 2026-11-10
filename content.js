@@ -341,6 +341,14 @@
     return idx >= 0 ? lyricLines(pkg.lines[idx], withTrans) : null;
   }
 
+  // 글자로 본 자막 언어 (가사 언어와 비교용)
+  function scriptLang(text) {
+    if (/[\u3040-\u30ff]/.test(text)) return 'ja';
+    if (/[\u3400-\u9fff]/.test(text)) return 'zh';
+    if (RE_HANGUL.test(text)) return 'ko';
+    return 'latin';
+  }
+
   // 자막이 보일 때 보여 줄 줄
   function captionLines(p, text) {
     const video = p.querySelector('video');
@@ -362,6 +370,17 @@
       if (settings.origFallback && typeof now === 'number') {
         const r = origLines(now);
         if (r && r.length) return r;
+      }
+    }
+    // 원문이 아닌 번역 자막(예: 일본어 노래에 영어 번역 자막)이면 자막 글자의 발음이 아니라
+    // 지금 부르는 가사 줄의 발음을 보여 준다
+    if (settings.lyricsMode && !RE_HANGUL.test(text)) {
+      const st = ensureLyrics(p);
+      const i = vs.info;
+      if (st.status === 'loading' && i && i.category === 'Music') return null; // 가사 결과를 기다린다
+      if (st.status === 'ready' && st.pkg.lang && scriptLang(text) !== st.pkg.lang) {
+        if (st.pkg.synced) return timedLyricLines(st, now, false);
+        return null;
       }
     }
     let res = cache.get(text);

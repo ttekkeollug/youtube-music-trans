@@ -69,6 +69,8 @@ async function translateTo(text, tl) {
  *   구글이 중국어·한국어로 잘못 판별하는 것을 막는다 (抜錨 → Batsubyō, 바마오 ✗)
  */
 async function convert(text, hint = '') {
+  // 일본어 노래 속 영어 줄(Brave shine 등)은 언어 지정 없이 영어로 읽는다
+  if (hint && !/[\u3040-\u30ff\u3400-\u9fff]/.test(text)) hint = '';
   const key = (hint ? hint + '|' : '') + text;
   if (cache.has(key)) return cache.get(key);
   const script = detectScript(text);
@@ -103,7 +105,7 @@ async function convert(text, hint = '') {
 }
 
 // ── 번역 자막 영상용: 원문 가사 찾아 줄마다 발음·번역 준비 ──
-const LYR_VER = 'v4';
+const LYR_VER = 'v5';
 const lyricsJobs = new Map();
 
 async function mapLimit(items, limit, fn) {
@@ -189,9 +191,12 @@ async function buildPkg(rec, { manual = false } = {}) {
   });
   // 구글 응답이 하나도 없었으면(네트워크 오류) 저장하지 않고 다음에 다시 만든다
   if (![...conv.values()].some((c) => c && c.ok)) return null;
+  // 가사 언어: 가나가 있으면 일본어, 한자만 있으면 중국어, 아니면 영어 등 로마자 언어
+  const all = raw.map((l) => l.text).join('\n');
+  const lang = /[\u3040-\u30ff]/.test(all) ? 'ja' : /[\u3400-\u9fff]/.test(all) ? 'zh' : /[\uac00-\ud7a3]/.test(all) ? 'ko' : 'latin';
   return {
     id: rec.id, track: rec.trackName, artist: rec.artistName, duration: Number(rec.duration) || 0,
-    synced: !!rec.syncedLyrics, manual, lines, at: Date.now(),
+    synced: !!rec.syncedLyrics, manual, lang, lines, at: Date.now(),
   };
 }
 
