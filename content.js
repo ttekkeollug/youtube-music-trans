@@ -5,7 +5,7 @@
 
   const DEFAULTS = {
     enabled: true, showPron: true, showTrans: false, lyricsMode: true, showOrig: true,
-    origFallback: true, noCapMode: true, noCapAsr: false, scale: 0.85, color: '#ffe066',
+    origFallback: true, noCapMode: true, noCapAsr: true, scale: 0.85, color: '#ffe066',
   };
   const settings = { ...DEFAULTS };
   const RE_HANGUL = /[가-힣]/;
@@ -357,7 +357,7 @@
         if (timed && timed.length) return timed;
       }
       // 노래 가사를 못 찾았거나 시간으로도 못 맞추면 같은 영상의 원어 자막(자동 생성 포함)으로
-      if ((st.status === 'none' || st.status === 'ready') && settings.origFallback && typeof now === 'number') {
+      if (settings.origFallback && typeof now === 'number') {
         const r = origLines(now);
         if (r && r.length) return r;
       }
@@ -386,8 +386,12 @@
     if (!video) return null;
     const now = video.currentTime;
     const st = ensureLyrics(p);
-    if (st.status === 'ready' && st.pkg.synced) return timedLyricLines(st, now, true);
-    if (st.status === 'none' && settings.noCapAsr) return origLines(now);
+    if (st.status === 'ready' && st.pkg.synced) {
+      const timed = timedLyricLines(st, now, true);
+      if (timed && timed.length) return timed;
+    }
+    // 가사가 없거나(찾는 중 포함) 시간을 맞출 수 없으면 영상의 원어 자동 자막으로 발음 표시
+    if (settings.noCapAsr) return origLines(now);
     return null;
   }
 

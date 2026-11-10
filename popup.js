@@ -1,4 +1,4 @@
-const DEFAULTS = { enabled: true, showPron: true, showTrans: false, lyricsMode: true, showOrig: true, origFallback: true, noCapMode: true, noCapAsr: false, scale: 0.85, color: '#ffe066' };
+const DEFAULTS = { enabled: true, showPron: true, showTrans: false, lyricsMode: true, showOrig: true, origFallback: true, noCapMode: true, noCapAsr: true, scale: 0.85, color: '#ffe066' };
 
 chrome.storage.sync.get(DEFAULTS, (s) => {
   for (const [key, def] of Object.entries(DEFAULTS)) {
