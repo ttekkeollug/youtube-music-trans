@@ -331,7 +331,9 @@
       if (a.status === 'running') return null;
       const i = vs.info;
       const durOk = pkg.duration && i && i.duration && Math.abs(pkg.duration - i.duration) <= 25;
-      if (!a.confident && !durOk && !pkg.manual) return null; // 사용자가 직접 고른 가사는 그대로 표시
+      // 음악 영상이거나 직접 고른 가사면 싱크 확인이 안 돼도 표시(싱크는 Alt+, / Alt+. 로 조정)
+      const music = i && i.category === 'Music';
+      if (!a.confident && !durOk && !pkg.manual && !music) return null;
       off = a.confident ? a.offset : 0;
     }
     loadManualOffset();
@@ -390,8 +392,9 @@
       const timed = timedLyricLines(st, now, true);
       if (timed && timed.length) return timed;
     }
-    // 가사가 없거나(찾는 중 포함) 시간을 맞출 수 없으면 영상의 원어 자동 자막으로 발음 표시
-    if (settings.noCapAsr) return origLines(now);
+    // 가사가 없거나 시간을 맞출 수 없으면 영상의 원어 자동 자막(음성 인식)으로 발음 표시.
+    // 음악 영상은 항상, 그 외 영상은 설정을 켰을 때만
+    if (settings.noCapAsr || i.category === 'Music') return origLines(now);
     return null;
   }
 
