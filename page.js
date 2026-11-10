@@ -63,6 +63,13 @@
       isLive: !!vd.isLive,
       category: (mf && mf.category) || '',
       ad: p.classList.contains('ad-showing'),
+      ccTrack: (() => {
+        try {
+          const t = p.getOption('captions', 'track');
+          if (!t || !t.languageCode) return null;
+          return { lang: t.languageCode, kind: t.kind || '', translated: !!(t.translationLanguage && t.translationLanguage.languageCode), tlang: (t.translationLanguage && t.translationLanguage.languageCode) || '' };
+        } catch (e) { return null; }
+      })(),
       tracks: ((tl && tl.captionTracks) || []).map((t) => ({
         lang: t.languageCode,
         kind: t.kind || '',

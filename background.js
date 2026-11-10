@@ -30,9 +30,9 @@ function remember(key, val) {
   if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
 }
 
-async function google(text) {
+async function google(text, sl = 'auto') {
   const url =
-    'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ko&dt=t&dt=rm&q=' +
+    `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sl)}&tl=ko&dt=t&dt=rm&q=` +
     encodeURIComponent(text);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 5000);
@@ -62,13 +62,19 @@ async function translateTo(text, tl) {
   return (data[0] || []).map((seg) => (typeof seg[0] === 'string' ? seg[0] : '')).join('').trim();
 }
 
-async function convert(text) {
-  if (cache.has(text)) return cache.get(text);
+/**
+ * @param hint 언어를 이미 알 때(가사 전체가 일본어 등) 지정. 한자만 있는 짧은 줄을
+ *   구글이 중국어·한국어로 잘못 판별하는 것을 막는다 (抜錨 → Batsubyō, 바마오 ✗)
+ */
+async function convert(text, hint = '') {
+  const key = (hint ? hint + '|' : '') + text;
+  if (cache.has(key)) return cache.get(key);
   const script = detectScript(text);
   let g = null;
   if (script !== 'ko') {
     try {
-      g = await google(text);
+      g = await google(text, hint || 'auto');
+      if (hint && g && !g.lang) g.lang = hint;
     } catch (e) {
       g = null; // 오프라인 대체 변환으로 진행
     }
@@ -87,15 +93,15 @@ async function convert(text) {
     pron = '';
   }
   const lang = (g && g.lang) || script;
-  const translation = g && g.translation && !lang.startsWith('ko') && g.translation !== text ? g.translation : '';
-  const result = { pron, translation, lang };
+  const translation = g && g.translation && (hint || !lang.startsWith('ko')) && g.translation !== text ? g.translation : '';
+  const result = { pron, translation, lang, ok: !!g };
   // 구글 응답이 있었을 때만 캐시(실패 결과가 굳지 않도록)
-  if (g || script === 'ko') remember(text, result);
+  if (g || script === 'ko') remember(key, result);
   return result;
 }
 
 // ── 번역 자막 영상용: 원문 가사 찾아 줄마다 발음·번역 준비 ──
-const LYR_VER = 'v3';
+const LYR_VER = 'v4';
 const lyricsJobs = new Map();
 
 async function mapLimit(items, limit, fn) {
@@ -164,16 +170,23 @@ async function buildLyrics({ videoId, title, channel, duration }) {
 async function buildPkg(rec, { manual = false } = {}) {
   let raw = rec.syncedLyrics ? parseLrc(rec.syncedLyrics) : [];
   if (!raw.length) raw = String(rec.plainLyrics || '').split('\n').map((t) => ({ t: null, text: t.trim() })).filter((l) => l.text);
+  // 원문 줄과 한국어 번역 줄이 섞여 올라온 가사(커버 전용 업로드 등)는 한국어 줄을 뺀다
+  const hasHangul = (t) => /[\uac00-\ud7a3]/.test(t);
+  const foreign = raw.filter((l) => !hasHangul(l.text));
+  if (foreign.length && foreign.length < raw.length && foreign.length >= raw.length * 0.3) raw = foreign;
   raw = raw.slice(0, 150);
   if (!raw.length) return null;
+  // 가사 전체로 언어를 정해 줄마다 같은 언어로 변환 (가나가 있으면 일본어)
+  const hint = raw.some((l) => /[\u3040-\u30ff]/.test(l.text)) ? 'ja' : '';
   const uniq = [...new Set(raw.map((l) => l.text))];
   const conv = new Map();
-  await mapLimit(uniq, 4, async (text) => conv.set(text, await convert(text)));
+  await mapLimit(uniq, 4, async (text) => conv.set(text, await convert(text, hint)));
   const lines = raw.map((l) => {
     const c = conv.get(l.text) || {};
     return { t: l.t, text: l.text, pron: c.pron || '', ko: c.translation || '' };
   });
-  if (!manual && !lines.some((l) => l.ko)) return null;
+  // 구글 응답이 하나도 없었으면(네트워크 오류) 저장하지 않고 다음에 다시 만든다
+  if (![...conv.values()].some((c) => c && c.ok)) return null;
   return {
     id: rec.id, track: rec.trackName, artist: rec.artistName, duration: Number(rec.duration) || 0,
     synced: !!rec.syncedLyrics, manual, lines, at: Date.now(),
@@ -233,7 +246,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (msg && msg.type === 'convert' && typeof msg.text === 'string') {
-    convert(msg.text.slice(0, 500)).then(sendResponse, () => sendResponse({ pron: '', translation: '', lang: '' }));
+    convert(msg.text.slice(0, 500), typeof msg.hint === 'string' ? msg.hint.slice(0, 10) : '').then(sendResponse, () => sendResponse({ pron: '', translation: '', lang: '' }));
     return true;
   }
   return false;

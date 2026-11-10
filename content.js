@@ -72,13 +72,15 @@
   }
   function refreshInfo() {
     const now = Date.now();
-    if (vs.info && vs.info.videoId === vs.vid && now - vs.infoAt < 5000) return;
+    if (vs.info && vs.info.videoId === vs.vid && now - vs.infoAt < 3000) return;
     if (now - vs.infoAt < 1000) return;
     vs.infoAt = now;
     const mine = vs;
     ask('info').then((i) => {
       if (mine !== vs || !i || i.videoId !== mine.vid) return;
+      const prevCc = mine.info && mine.info.ccTrack ? JSON.stringify(mine.info.ccTrack) : '';
       mine.info = i;
+      if (prevCc && prevCc !== JSON.stringify(i.ccTrack || null) && mine.orig.status !== 'loading') mine.orig = { status: 'idle', cues: null, retryAt: 0 };
       if (i.url) baseUrls.set(i.videoId, i.url);
       schedule();
     });
@@ -112,31 +114,46 @@
       || players[0] || null;
   }
 
+  // 유튜브가 자막 자리에 띄우는 안내 문구(자동 번역 설정 안내 등)는 자막이 아니다
+  const RE_NOTICE = /자동 생성됨|설정을 확인하려면|auto-generated|click .*settings|>>\s*한국어/i;
+  const clean = (t) => t.replace(/[\u200b-\u200d\u2060\ufeff]/g, '').replace(/(^|\s)>>\s*/g, ' ').replace(/\s+/g, ' ').trim();
+
   function readCaption(p) {
-    const windows = [...p.querySelectorAll('.caption-window')].filter((w) => w.offsetParent !== null);
+    const pr = p.getBoundingClientRect();
+    const windows = [...p.querySelectorAll('.caption-window')]
+      .filter((w) => w.offsetParent !== null && w.querySelector('.ytp-caption-segment') && !RE_NOTICE.test(w.textContent));
     const parts = [];
-    let rect = null;
+    const seenText = new Set();
+    let rect = null, bottomRect = null;
+    const grow = (a, r) => (a
+      ? { left: Math.min(a.left, r.left), right: Math.max(a.right, r.right), top: Math.min(a.top, r.top), bottom: Math.max(a.bottom, r.bottom) }
+      : { left: r.left, right: r.right, top: r.top, bottom: r.bottom });
     for (const win of windows) {
-      const segs = win.querySelectorAll('.ytp-caption-segment');
-      if (!segs.length) continue;
       const lines = win.querySelectorAll('.caption-visual-line');
       const src = lines.length ? lines : [win];
+      const winText = [];
       for (const line of src) {
-        const t = [...line.querySelectorAll('.ytp-caption-segment')].map((s) => s.textContent).join('');
-        if (t.trim()) parts.push(t.trim());
+        const t = clean([...line.querySelectorAll('.ytp-caption-segment')].map((s) => s.textContent).join(''));
+        if (t) winText.push(t);
       }
+      // 효과용으로 같은 자막을 여러 겹 겹쳐 놓은 영상은 한 번만 읽는다
+      const key = winText.join('\n');
+      if (!key || seenText.has(key)) continue;
+      seenText.add(key);
+      parts.push(...winText);
       const r = win.getBoundingClientRect();
-      rect = rect
-        ? { left: Math.min(rect.left, r.left), right: Math.max(rect.right, r.right), top: Math.min(rect.top, r.top), bottom: Math.max(rect.bottom, r.bottom) }
-        : { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+      rect = grow(rect, r);
+      if ((r.top + r.bottom) / 2 - pr.top >= pr.height * 0.5) bottomRect = grow(bottomRect, r);
     }
+    // 위치는 아래쪽 자막 창 기준 (위·아래에 동시에 자막이 있으면 아래쪽에 맞춘다)
+    if (bottomRect) rect = bottomRect;
     // 원문 줄과 한국어 번역 줄이 함께 있는 자막이면 원문 줄만 발음 변환에 쓴다
     const srcParts = parts.filter((t) => RE_SRC.test(t) && !RE_HANGUL.test(t));
     const koParts = parts.filter((t) => RE_HANGUL.test(t));
-    const text = (srcParts.length && koParts.length ? srcParts : parts).join(' ').replace(/\s+/g, ' ').trim();
+    const text = clean((srcParts.length && koParts.length ? srcParts : parts).join(' '));
     const seg = p.querySelector('.ytp-caption-segment');
     const fontSize = seg ? parseFloat(getComputedStyle(seg).fontSize) || 18 : 18;
-    const host = windows.length ? windows[0].closest('.ytp-caption-window-container') : null;
+    const host = windows.length ? windows[0].closest('.ytp-caption-window-container') : p.querySelector('.ytp-caption-window-container');
     return { text, rect, fontSize, host };
   }
 
@@ -200,13 +217,16 @@
     if (o.status !== 'idle' || Date.now() < o.retryAt) return o;
     const i = vs.info;
     if (!i || i.videoId !== vs.vid || i.ad) return o;
-    const track = T.pickSourceTrack(i.tracks);
+    // 지금 보는 자막이 자동 번역(예: 영어 자동 생성 >> 한국어)이면 번역 전 트랙이 곧 원문이다
+    const cc = i.ccTrack;
+    const track = cc && cc.translated && cc.lang && !/^ko/i.test(cc.lang) ? { lang: cc.lang, kind: cc.kind } : T.pickSourceTrack(i.tracks);
+    o.lang = track ? track.lang : '';
     if (!track) { o.status = 'none'; return o; }
     o.status = 'loading';
     const mine = vs;
     fetchCues(mine, track).then((cues) => {
       if (mine !== vs) return;
-      if (cues && cues.length) { o.cues = cues; o.status = 'ready'; schedule(); }
+      if (cues && cues.length) { o.cues = cues.map((c) => ({ ...c, text: clean(c.text) })).filter((c) => c.text); o.status = 'ready'; schedule(); }
       else { o.status = 'idle'; o.retryAt = Date.now() + 15000; }
     }, () => { if (mine === vs) { o.status = 'idle'; o.retryAt = Date.now() + 15000; } });
     return o;
@@ -247,14 +267,14 @@
   }
 
   // ── 발음 변환 요청 ──
-  function request(text, direct = false) {
+  function request(text, direct = false, hint = '') {
     if (inflight.has(text) || !alive) return;
     const f = failedAt.get(text);
     if (f && Date.now() - f < 3000) return;
     const send = () => {
       inflight.add(text);
       try {
-        chrome.runtime.sendMessage({ type: 'convert', text }, (res) => {
+        chrome.runtime.sendMessage({ type: 'convert', text, hint }, (res) => {
           inflight.delete(text);
           if (chrome.runtime.lastError || !res) { failedAt.set(text, Date.now()); return; }
           cache.set(text, res);
@@ -291,7 +311,7 @@
     const cue = T.activeCue(o.cues, now);
     if (!cue) return null;
     const res = cache.get(cue.text);
-    if (!res) { request(cue.text, true); return null; }
+    if (!res) { request(cue.text, true, (o.lang || '').split('-')[0] === 'ja' ? 'ja' : ''); return null; }
     const out = [];
     if (settings.showPron && res.pron) out.push(['ykpron-pron', res.pron]);
     if (settings.showOrig && res.pron && res.pron !== cue.text) out.push(['ykpron-orig', cue.text]);
