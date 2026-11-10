@@ -18,7 +18,7 @@
   const baseUrls = new Map();   // videoId → 플레이어가 쓴 자막 URL
   let overlay = null, toast = null, toastTimer = 0;
   let player = null, container = null, observer = null;
-  let lift = 0, rafId = 0, lastRender = '', shownText = '', debounceTimer = 0, lastShownAt = 0;
+  let lift = 0, rafId = 0, lastRender = '', shownText = '', debounceTimer = 0, lastShownAt = 0, lastCaptionAt = 0;
   let alive = true;
   let lastReq = { vid: '', title: '' };
   let vs = newVideoState('');
@@ -298,6 +298,27 @@
     return out;
   }
 
+  /**
+   * 가사 타임스탬프로 지금 부르는 줄. 싱크는 ① 자막 매칭으로 배운 시간차 ② 자동 자막으로 계산한 시간차 순으로 쓴다.
+   * 엉뚱한 노래를 띄우지 않도록, 둘 다 없으면 곡 길이가 영상 길이와 비슷할 때만 시간차 0으로 표시.
+   */
+  function timedLyricLines(st, now, withTrans) {
+    const pkg = st.pkg;
+    if (!pkg || !pkg.synced || typeof now !== 'number') return null;
+    let off = st.matcher && st.matcher.learnedOffset();
+    if (off == null) {
+      const a = ensureAlign(pkg);
+      if (a.status === 'running') return null;
+      const i = vs.info;
+      const durOk = pkg.duration && i && i.duration && Math.abs(pkg.duration - i.duration) <= 25;
+      if (!a.confident && !durOk) return null;
+      off = a.offset;
+    }
+    loadManualOffset();
+    const idx = T.lineAtTime(pkg.lines, now, off + vs.manualOffset);
+    return idx >= 0 ? lyricLines(pkg.lines[idx], withTrans) : null;
+  }
+
   // 자막이 보일 때 보여 줄 줄
   function captionLines(p, text) {
     const video = p.querySelector('video');
@@ -310,10 +331,13 @@
           st.lastMatch = st.matcher.match(text, now);
         }
         shownText = '';
-        return st.lastMatch ? lyricLines(st.pkg.lines[st.lastMatch.index], false) : null;
+        if (st.lastMatch) return lyricLines(st.pkg.lines[st.lastMatch.index], false);
+        // 번역 자막이 가사 줄과 글자로 안 맞으면(말투 차이·안내 문구 등) 시간 기준 가사 줄로
+        const timed = timedLyricLines(st, now, false);
+        if (timed && timed.length) return timed;
       }
-      // 노래 가사를 못 찾으면 같은 영상의 원어 자막(자동 생성 포함)으로
-      if (st.status === 'none' && settings.origFallback && typeof now === 'number') {
+      // 노래 가사를 못 찾았거나 시간으로도 못 맞추면 같은 영상의 원어 자막(자동 생성 포함)으로
+      if ((st.status === 'none' || st.status === 'ready') && settings.origFallback && typeof now === 'number') {
         const r = origLines(now);
         if (r && r.length) return r;
       }
@@ -342,16 +366,7 @@
     if (!video) return null;
     const now = video.currentTime;
     const st = ensureLyrics(p);
-    if (st.status === 'ready' && st.pkg.synced) {
-      const a = ensureAlign(st.pkg);
-      if (a.status === 'running') return null;
-      // 엉뚱한 노래를 띄우지 않도록: 자동 자막으로 싱크가 확인됐거나, 곡 길이가 영상 길이와 비슷할 때만
-      const durOk = st.pkg.duration && i.duration && Math.abs(st.pkg.duration - i.duration) <= 25;
-      if (!a.confident && !durOk) return null;
-      loadManualOffset();
-      const idx = T.lineAtTime(st.pkg.lines, now, a.offset + vs.manualOffset);
-      return idx >= 0 ? lyricLines(st.pkg.lines[idx], true) : null;
-    }
+    if (st.status === 'ready' && st.pkg.synced) return timedLyricLines(st, now, true);
     if (st.status === 'none' && settings.noCapAsr) return origLines(now);
     return null;
   }
@@ -489,12 +504,14 @@
     const cap = readCaption(p);
     attach(p, cap.host);
     if (cap.text && cap.rect) {
+      lastCaptionAt = Date.now();
       if (lift) lastShownAt = Date.now(); // 자막이 떠 있는 동안은 높이 유지
       const lines = captionLines(p, cap.text);
       if (lines && lines.length) return showUnderCaption(p, lines, cap);
       return hide('keep');
     }
-    if (settings.noCapMode && vid) {
+    // 자막을 켜 둔 상태에서 줄과 줄 사이 빈틈이면 자막 없는 모드로 넘어가지 않는다
+    if (settings.noCapMode && vid && Date.now() - lastCaptionAt > 5000) {
       const lines = noCaptionLines(p);
       if (lines && lines.length) return showAtBottom(p, lines);
     }
