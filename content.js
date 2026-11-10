@@ -510,8 +510,12 @@
       if (lines && lines.length) return showUnderCaption(p, lines, cap);
       return hide('keep');
     }
-    // 자막을 켜 둔 상태에서 줄과 줄 사이 빈틈이면 자막 없는 모드로 넘어가지 않는다
-    if (settings.noCapMode && vid && Date.now() - lastCaptionAt > 5000) {
+    // 자막 버튼이 켜져 있고 최근에 자막이 있었으면 줄 사이 빈틈 → 자막 없는 모드로 넘어가지 않는다.
+    // 버튼을 끄면 바로 자막 없는 모드로.
+    const ccBtn = p.querySelector('.ytp-subtitles-button');
+    const ccOn = ccBtn ? ccBtn.getAttribute('aria-pressed') === 'true' : true;
+    const inGap = ccOn && Date.now() - lastCaptionAt < (ccBtn ? 15000 : 5000);
+    if (settings.noCapMode && vid && !inGap) {
       const lines = noCaptionLines(p);
       if (lines && lines.length) return showAtBottom(p, lines);
     }
