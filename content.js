@@ -212,14 +212,19 @@
   }
 
   // ── 원어 자막 트랙 (한국어 자막만 보일 때·자막이 꺼져 있을 때 사용) ──
-  function ensureOrig() {
+  function ensureOrig(forced) {
+    // 다른 트랙이 필요해지면(자막을 바꿈 등) 새로 받는다
+    if (forced && vs.orig.key !== forced.lang + '/' + forced.kind && vs.orig.status !== 'loading') {
+      vs.orig = { status: 'idle', cues: null, retryAt: 0 };
+    }
     const o = vs.orig;
     if (o.status !== 'idle' || Date.now() < o.retryAt) return o;
     const i = vs.info;
     if (!i || i.videoId !== vs.vid || i.ad) return o;
     // 지금 보는 자막이 자동 번역(예: 영어 자동 생성 >> 한국어)이면 번역 전 트랙이 곧 원문이다
     const cc = i.ccTrack;
-    const track = cc && cc.translated && cc.lang && !/^ko/i.test(cc.lang) ? { lang: cc.lang, kind: cc.kind } : T.pickSourceTrack(i.tracks);
+    const track = forced || (cc && cc.translated && cc.lang && !/^ko/i.test(cc.lang) ? { lang: cc.lang, kind: cc.kind } : T.pickSourceTrack(i.tracks));
+    o.key = track ? track.lang + '/' + track.kind : '';
     o.lang = track ? track.lang : '';
     if (!track) { o.status = 'none'; return o; }
     o.status = 'loading';
@@ -305,11 +310,13 @@
   }
 
   /** 원어 트랙에서 지금 시각의 줄을 발음으로 */
-  function origLines(now) {
-    const o = ensureOrig();
+  function origLines(now, forced) {
+    const o = ensureOrig(forced);
     if (o.status !== 'ready') return null;
     const cue = T.activeCue(o.cues, now);
     if (!cue) return null;
+    // 원어가 한국어면 그 줄 자체가 한국어 발음
+    if (/^ko/i.test(o.lang || '')) return settings.showPron ? [['ykpron-pron', cue.text]] : null;
     const res = cache.get(cue.text);
     if (!res) { request(cue.text, true, (o.lang || '').split('-')[0] === 'ja' ? 'ja' : ''); return null; }
     const out = [];
@@ -349,6 +356,28 @@
     return 'latin';
   }
 
+  const langScript = (lang) => {
+    const b = String(lang || '').split('-')[0].toLowerCase();
+    return b === 'ja' ? 'ja' : b === 'zh' ? 'zh' : b === 'ko' ? 'ko' : 'latin';
+  };
+
+  /**
+   * 화면의 자막이 실제로 부르는(말하는) 언어가 아니라 번역이면, 원어 트랙을 돌려준다.
+   *  · 자동 번역 자막(예: 한국어 자동 생성 >> 영어) → 번역 전 트랙
+   *  · 자막 글자의 언어가 음성 언어(자동 자막 언어)와 다름 → 음성 언어 트랙
+   */
+  function spokenTrackFor(text) {
+    const i = vs.info;
+    if (!i || i.videoId !== vs.vid) return null;
+    const cc = i.ccTrack;
+    if (cc && cc.translated && cc.lang) return { lang: cc.lang, kind: cc.kind };
+    const tracks = i.tracks || [];
+    const asr = tracks.find((t) => t.kind === 'asr');
+    if (!asr || langScript(asr.lang) === scriptLang(text)) return null;
+    const base = (l) => String(l).split('-')[0];
+    return tracks.find((t) => t.kind !== 'asr' && base(t.lang) === base(asr.lang)) || asr;
+  }
+
   // 자막이 보일 때 보여 줄 줄
   function captionLines(p, text) {
     const video = p.querySelector('video');
@@ -374,6 +403,18 @@
     }
     // 원문이 아닌 번역 자막(예: 일본어 노래에 영어 번역 자막)이면 자막 글자의 발음이 아니라
     // 지금 부르는 가사 줄의 발음을 보여 준다
+    if (!RE_HANGUL.test(text) && typeof now === 'number') {
+      const spoken = spokenTrackFor(text);
+      if (spoken) {
+        // 가사를 찾았고 언어가 같으면 가사가 더 정확하다
+        const st = settings.lyricsMode ? ensureLyrics(p) : null;
+        if (st && st.status === 'ready' && st.pkg.synced && st.pkg.lang === langScript(spoken.lang)) {
+          const timed = timedLyricLines(st, now, false);
+          if (timed && timed.length) return timed;
+        }
+        return settings.origFallback ? origLines(now, spoken) : null;
+      }
+    }
     if (settings.lyricsMode && !RE_HANGUL.test(text)) {
       const st = ensureLyrics(p);
       const i = vs.info;
