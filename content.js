@@ -670,8 +670,14 @@
   }
 
   // ── 메인 루프 ──
+  let rafAt = 0;
   function schedule() {
-    if (!rafId) rafId = requestAnimationFrame(update);
+    if (!rafId) { rafAt = Date.now(); rafId = requestAnimationFrame(update); }
+  }
+  // 창이 가려져 화면 그리기(requestAnimationFrame)가 멈춰도 상태는 계속 갱신
+  function tick() {
+    if (rafId && Date.now() - rafAt > 1000) { cancelAnimationFrame(rafId); rafId = 0; update(); return; }
+    schedule();
   }
 
   function update() {
@@ -732,7 +738,7 @@
     schedule();
   }, true);
 
-  setInterval(schedule, 250);
+  setInterval(tick, 250);
   window.addEventListener('resize', schedule);
   document.addEventListener('fullscreenchange', schedule);
 })();

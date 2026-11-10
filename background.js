@@ -5,7 +5,9 @@ import { analyzeTitle, parseLrc, pickBest, searchLrclib } from './lib/lyrics.js'
 let dictPromise = null;
 function loadDict() {
   if (!dictPromise) {
-    dictPromise = fetch(chrome.runtime.getURL('data/cmudict.txt'))
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 20000);
+    dictPromise = fetch(chrome.runtime.getURL('data/cmudict.txt'), { signal: ctrl.signal })
       .then((r) => r.text())
       .then((txt) => {
         const map = new Map();
@@ -211,7 +213,9 @@ async function searchSongs({ query, title, channel }) {
 }
 
 async function setLyrics({ videoId, id }) {
-  const res = await fetch('https://lrclib.net/api/get/' + encodeURIComponent(id), { headers: { 'Lrclib-Client': 'yt-kpron/2.1.0' } });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10000);
+  const res = await fetch('https://lrclib.net/api/get/' + encodeURIComponent(id), { headers: { 'Lrclib-Client': 'yt-kpron/2.1' }, signal: ctrl.signal }).finally(() => clearTimeout(timer));
   if (!res.ok) throw new Error('lrclib ' + res.status);
   const pkg = await buildPkg(await res.json(), { manual: true });
   if (!pkg) return null;
