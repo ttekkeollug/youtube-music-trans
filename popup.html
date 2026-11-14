@@ -10,6 +10,8 @@
   input[type=range] { width: 110px; }
   .hint { color: #777; font-size: 11px; line-height: 1.55; margin-top: 12px; }
   kbd { font: 11px monospace; background: #eee; border-radius: 3px; padding: 0 3px; }
+  #coffee { display: block; margin-top: 12px; padding: 7px; border-radius: 6px; background: #f2f2f2; color: #1f1f1f; text-decoration: none; text-align: center; }
+  #coffee:hover { background: #e6e6e6; }
 </style>
 </head>
 <body>
@@ -31,6 +33,7 @@
   <label>글자 크기 <input type="range" id="scale" min="0.5" max="1.5" step="0.05"></label>
   <label>발음 글자색 <input type="color" id="color"></label>
   <div class="hint">자막 없는 영상 모드에서 가사가 어긋나면 <kbd>Alt</kbd>+<kbd>,</kbd> (가사 늦게) / <kbd>Alt</kbd>+<kbd>.</kbd> (가사 빠르게) / <kbd>Alt</kbd>+<kbd>/</kbd> (초기화)로 0.5초씩 맞출 수 있습니다. 영상마다 저장됩니다.</div>
+  <a id="coffee" href="https://chzzk.naver.com/live/61fd47147848ac0035788e31fe000090/chat?studio=true" target="_blank" rel="noopener">☕ 개발자에게 커피 사주기</a>
   <script src="popup.js"></script>
 </body>
 </html>

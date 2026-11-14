@@ -87,3 +87,6 @@
 - 언어 판별과 로마자 표기에는 비공식 구글 번역 엔드포인트(`translate.googleapis.com`)를 씁니다. 결과는 캐시되므로 같은 줄을 다시 요청하지 않습니다.
 - 발음은 규칙 기반이라 실제 노래 발음과 조금 다를 수 있습니다.
 - 영어 발음 데이터: CMU Pronouncing Dictionary (npm `cmu-pronouncing-dictionary`, ISC 라이선스 — `data/LICENSE-cmu-pronouncing-dictionary.txt`)
+
+## ☕ 개발자에게 커피 사주기
+마음에 드셨다면 [여기](https://chzzk.naver.com/live/61fd47147848ac0035788e31fe000090/chat?studio=true)에서 후원해 주세요. 큰 힘이 됩니다!
